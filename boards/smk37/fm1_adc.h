@@ -54,8 +54,14 @@ enum {
     FM1_ADC_BATT     = 6
 };
 
+/* FM-1 timing macro kept for reference but NOT used on SMK — it produces
+ * a ~250 us conversion that never finishes in one 100 us tick.
+ * Use SMK_ADC_CON(ch) from fm1_input.h for all SMK ADC starts. */
 #define FM1_ADC_CON(div, delay) ((uint32_t)((div) & 7u) | 8u | ((uint32_t)((delay) & 15u) << 12))
-#define FM1_ADC_CON_SDK FM1_ADC_CON(6, 15)
+/* FM-1 default timing (too slow for SMK; retained so shared code that
+ * calls fm1_adc_read() still compiles; fm1_adc_read() is only used in
+ * host-simulator paths on the SMK and the timeout loop handles it): */
+#define FM1_ADC_CON_SDK FM1_ADC_CON(0, 0)   /* SMK: fast path; actual con = 0x400D|(ch<<8) */
 
 /* fm1_adc_init: configure the key-row analog pins (PA7, PA8).
  * Fader pins (Task 3 will add their specific GPIO setup).
@@ -77,7 +83,17 @@ static void fm1_adc_init(void)
     FM1_PR(FM1_PC, FM1_PD)  &= ~(1u << 9);
     FM1_PR(FM1_PC, FM1_DIR) |=  (1u << 9);
 
-    /* TODO Task 3: configure fader ADC input pins (ch2-5) and battery mux C. */
+    /* PA10 (mux C analog): analog input, no pulls */
+    {
+        uint32_t m = 1u << 10;
+        FM1_PR(FM1_PA, FM1_DIE) &= ~m;
+        FM1_PR(FM1_PA, FM1_PU)  &= ~m;
+        FM1_PR(FM1_PA, FM1_PD)  &= ~m;
+        FM1_PR(FM1_PA, FM1_DIR) |=  m;
+    }
+    /* Note: battery mux C addr 7 is read by fm1_input_tick() via the ADC
+     * mux cycle — no separate pin setup required; the mux address is set
+     * in the 595 column word (bits 5..3) by smk__col_word(). */
 }
 
 static void fm1_adc_start(uint32_t ch, uint32_t con)
