@@ -36,14 +36,47 @@ static inline void *fl_far(void *p) { void *volatile q = p; return q; }
 #define T4_CNT          REG32(0x10804u)            /* TIMER4, 24 MHz free-running */
 
 #define FL_XIP(off)     FM1_XIP(off)              /* fm1_xip.h */
+
+/* Flash region addresses: the FM-1 defaults.  Board headers (included before
+ * this file via unity.c's include order) may override any of these with
+ * #ifndef guards; see bsp/boards/smk37/fm1_flash_map.h for the SMK-37 values.
+ * Never define these directly in app code. */
+#ifndef FL_DATA_LO
 #define FL_DATA_LO      0x00097000u                /* Felucca main store */
+#endif
+#ifndef FL_DATA_HI
 #define FL_DATA_HI      0x000E0000u
+#endif
+#ifndef FL_GLOB_LO
 #define FL_GLOB_LO      0x000FC000u                /* Felucca superblock / globals */
+#endif
+#ifndef FL_GLOB_HI
 #define FL_GLOB_HI      0x000FF000u
+#endif
+#ifndef FL_OTA_LO
 #define FL_OTA_LO       0x000E0000u                /* M-UPGRADE loader staging, ota.c */
+#endif
+#ifndef FL_OTA_HI
 #define FL_OTA_HI       0x000E5000u
-#define FL_AUTO_LO      0x000E5000u                /* 1.2: the autosave (storage.c OBJ_AUTOSAVE), A/B, just above */
-#define FL_AUTO_HI      0x000E7000u                /* the OTA staging; 0xE7000 stays free */
+#endif
+#ifndef FL_AUTO_LO
+#define FL_AUTO_LO      0x000E5000u                /* 1.2: autosave (storage.c OBJ_AUTOSAVE), A/B */
+#endif
+#ifndef FL_AUTO_HI
+#define FL_AUTO_HI      0x000E7000u                /* just above OTA staging; 0xE7000 stays free */
+#endif
+
+/* Plain XIP window start (unencrypted data region).
+ * Board header may override before this file is included. */
+#ifndef FL_PLAIN_WINDOW_LO
+#define FL_PLAIN_WINDOW_LO 0x93000u
+#endif
+
+/* JEDEC ID check: board header may override for a different flash chip.
+ * Default: FM-1's ZB25Q16B / ZB25Q16C (0x856014). */
+#ifndef FL_JEDEC_OK
+#define FL_JEDEC_OK(id) ((id) == 0x856014u)
+#endif
 /* [off, off + n) inside [lo, hi), without wrapping: off + n can overflow, and
  * the 1 MiB part ignores the high address bits, so a wrapped range lands low. */
 #define FL_IN(off, n, lo, hi) ((uint32_t)(off) >= (lo) && (uint32_t)(off) <= (hi) && \
@@ -217,15 +250,17 @@ static RAMFN int fl_read_ram(uint32_t off, uint8_t *dst, uint32_t n)   /* 0x0B f
 /* ---- XIP side (normal .text) ---- */
 
 /* Once at boot, before any XIP read of the data region: map the data area
- * as an unencrypted XIP window (as the SDK's IOCTL_SET_VM_INFO does). */
+ * as an unencrypted XIP window (as the SDK's IOCTL_SET_VM_INFO does).
+ * FL_PLAIN_WINDOW_LO defaults to 0x93000 (FM-1); SMK-37 sets it to 0x9D000
+ * via bsp/boards/smk37/fm1_flash_map.h (included before this header). */
 static void fl_plain_window_init(void)
 {
     SFCENC_CON &= (uint8_t)~2u;
-    SFCENC_UNENC_L = FL_XIP(0x93000u);            /* 0x0208F000 */
+    SFCENC_UNENC_L = FL_XIP(FL_PLAIN_WINDOW_LO);
     SFCENC_UNENC_H = 0x07FFFFFFu;
     SFCENC_CON |= 2u;
     __asm__ volatile("cli" ::: "memory");
-    fl_inval(0x93000u, 0x100000u - 0x93000u);     /* drop any decrypted lines */
+    fl_inval(FL_PLAIN_WINDOW_LO, 0x100000u - FL_PLAIN_WINDOW_LO); /* drop decrypted lines */
     __asm__ volatile("csync\n\tsti" ::: "memory");
 }
 

@@ -8,3 +8,9 @@
 #pragma once
 
 #define FM1_INLINE static inline __attribute__((always_inline))
+
+/* BOARD_SMK37: 1 when building for the M-VAVE SMK-37, 0 for the FM-1 (the default).
+ * Set by the build system (-DBOARD_SMK37=1); never define it in app code. */
+#ifndef BOARD_SMK37
+#define BOARD_SMK37 0
+#endif

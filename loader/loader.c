@@ -12,13 +12,27 @@
 #define FELUCCA_OTA 1
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_USB_PID 0x0002
+/* FELUCCA_ID: the M-UPGRADE protocol identity ("ota-" prefix required).
+ * The SMK-37 loader announces "ota-SMK-37 Pro_900" so the installer can
+ * filter by model and refuse to flash an FM-1 package onto an SMK-37. */
+#if BOARD_SMK37
+#define FELUCCA_ID "ota-SMK-37 Pro_900"
+#else
 #define FELUCCA_ID "ota-FM-1_900"
+#endif
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #include "fm1_time.h"
 #include "fm1_sys.h"
-/* the loader may write the app area and erase update records; never the head, nor Felucca's store
- * [0x97000, 0xE0000) (user data, never a record: ldr_core.c) */
+/* FL_RANGE_OK: the flash ranges the loader is allowed to erase / program.
+ *   FM-1:   app area [0x4000, 0x97000) + update records [0xE0000, 0xFC000)
+ *   SMK-37: app area [0x4000, 0x9D000) + store + OTA staging [0x9D000, 0xC0000)
+ * This define sits BEFORE the #include of fm1_flash.h, exploiting its
+ * #ifndef FL_RANGE_OK guard (the board's fl_range overrides the default). */
+#if BOARD_SMK37
+#define FL_RANGE_OK(off, n) (FL_IN(off, n, 0x4000u, 0x9D000u) || FL_IN(off, n, 0x9D000u, 0xC0000u))
+#else
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, 0x4000u, 0x97000u) || FL_IN(off, n, 0xE0000u, 0xFC000u))
+#endif
 #include "fm1_flash.h"
 #include "../chip/libc.c"
 #include "../chip/usb.c"
