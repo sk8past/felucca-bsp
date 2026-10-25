@@ -260,6 +260,46 @@ def errors():
     ok(rc == 2, "missing file -> exit 2")
 
 
+def smk_installs():
+    """SMK-37: resume-path model checks (AGENTS.md rule 9)."""
+    # SMK-37 Pro package
+    raw_pro   = package(product="SMK-37 Pro_900")
+    image_pro = I.logical_image(raw_pro)
+    p_pro     = pkgfile("smk-pro.fwsc", raw_pro)
+
+    # SMK-37 Elite package
+    raw_elite   = package(product="SMK-37 Elite_900")
+    image_elite = I.logical_image(raw_elite)
+    p_elite     = pkgfile("smk-elite.fwsc", raw_elite)
+
+    # Resume path: device already in update mode, same model → succeeds
+    dev = FakeFM1(image_pro, identity="ota-SMK-37 Pro_900", name="SMK-37 Update",
+                  after_write="SMK-37 Pro_900")
+    rc, out, err = cli([p_pro, "--yes"], dev)
+    ok(rc == 0 and dev.bad == 0 and dev.upgrades == 1 and "update mode" in out,
+       "smk: resume (Pro loader + Pro package) -> succeeds, only one write")
+
+    # Resume path: device already in update mode, mismatched model → exit 6, nothing written
+    dev = FakeFM1(image_pro, identity="ota-SMK-37 Elite_900", name="SMK-37 Update",
+                  after_write="SMK-37 Pro_900")
+    rc, out, err = cli([p_pro, "--yes"], dev)
+    ok(rc == 6 and dev.upgrades == 0,
+       "smk: resume (Elite loader + Pro package) -> exit 6, nothing written")
+
+    # Resume path: Elite loader + Elite package → succeeds
+    dev = FakeFM1(image_elite, identity="ota-SMK-37 Elite_900", name="SMK-37 Update",
+                  after_write="SMK-37 Elite_900")
+    rc, out, err = cli([p_elite, "--yes"], dev)
+    ok(rc == 0 and dev.bad == 0 and dev.upgrades == 1,
+       "smk: resume (Elite loader + Elite package) -> succeeds")
+
+    # Running firmware: SMK-37 Elite device, Pro package → exit 6 (wrong model, before any MIDI)
+    dev = FakeFM1(image_pro, identity="SMK-37 Elite_900", name="SMK-37")
+    rc, out, err = cli([p_pro, "--yes"], dev)
+    ok(rc == 6 and dev.upgrades == 0,
+       "smk: running firmware (Elite + Pro package) -> exit 6, nothing written")
+
+
 def against_js():
     clean = ROOT / "build/felucca.fwsc"
     if not shutil.which("node") or not clean.exists():
@@ -296,6 +336,7 @@ def official():
 wire()
 installs()
 errors()
+smk_installs()
 against_js()
 official()
 shutil.rmtree(TMP, ignore_errors=True)
